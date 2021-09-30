@@ -27,6 +27,9 @@ from telegram.ext import (
     ConversationHandler,
     CallbackContext,
 )
+from pymongo import MongoClient
+
+
 
 API_KEY="2030778912:AAHXRHyc1ilT9psaMbDnyPjygydjqxozKKw"
 bt = Bot(API_KEY)
@@ -41,19 +44,43 @@ logger = logging.getLogger(__name__)
 PHONE,NAME,REASON,WORK_OBJ= range(4)
 
 
+
+##find index in dict function
+
+def find_index(update):
+    i = 0
+    for t in user_data:
+        if t['chat_id'] == update.message.chat_id:
+            break
+        else:
+            i += 1
+    return i
+
 ##class
 
 class sql_object:
-    def __init__(self):
-        self.id=""
-        self.date=""
-        self.reason=""
-        self.name=""
-        self.phone=""
-        self.work_obj=None
+    def __init__(self,obj):
+        self.id=obj['id']
+        self.date=obj['date']
+        self.reason=obj['reason']
+        self.name=obj['name']
+        self.phone=obj['phone']
+        self.work_obj=obj['work_obj']
 
-sql_obj=sql_object
+    def insert_into_db(self):
+        obj={
+            'user_id' : self.id,
+            'date' : self.date,
+            'reason' : self.reason,
+            'name' : self.name,
+            'phone' : self.phone,
+            'work_obj' : self.work_obj
+        }
+        db.user_data_db.insert_one(obj)
 
+user_data=[]
+client = MongoClient(r'mongodb+srv://help_me_prog_admin:tonton12@cluster0.y10nh.mongodb.net/test?ssl=true&ssl_cert_reqs=CERT_NONE')
+db = client.help_me_prog_db
 
 ##functions of actions
 
@@ -96,6 +123,18 @@ def start(update: Update, context: CallbackContext) -> int:
 
 def reason(update: Update, context: CallbackContext) -> int:
     """post reason for making the chat and choosing name"""
+
+    ##getting user data into sql object
+    user_data.append({'chat_id':update.message.chat_id})
+
+    i=find_index(update)
+
+
+    user_data[i]['id']=update.message.from_user.id
+    user_data[i]['date'] = update.message.date
+    user_data[i]['reason'] = update.message.text
+
+
     user = update.message.from_user
     logger.info("Reason of %s: %s", user.first_name, update.message.text)
 
@@ -107,6 +146,16 @@ def reason(update: Update, context: CallbackContext) -> int:
 
 def name(update: Update, context: CallbackContext) -> int:
     """Stores the selected name and asks for a phone number."""
+
+    ##getting user data into sql object
+
+    i=find_index(update)
+
+
+
+    user_data[i]['name'] = update.message.text
+
+
     user = update.message.from_user
     logger.info("Name of %s: %s", user.first_name, update.message.text)
 
@@ -122,6 +171,17 @@ def name(update: Update, context: CallbackContext) -> int:
 
 def phone(update: Update, context: CallbackContext) -> int:
     """Stores the phone of the user and asks for work document."""
+
+    ##getting user data into sql object
+
+    i=find_index(update)
+
+
+
+    user_data[i]['phone'] = update.message.text
+
+
+
     user = update.message.from_user
     logger.info("Phone of %s: %s", user.first_name, update.message.text)
 
@@ -132,29 +192,57 @@ def phone(update: Update, context: CallbackContext) -> int:
 def work_obj(update: Update, context: CallbackContext) -> int:
     """Stores the document of the user and ends the chat."""
 
-    chat_id = update.message.chat_id
-    print("chat id is: %s"%chat_id)
-
 
 
     ## bot geting the document and its file_name
-    file_id = "%s"%update.message['document']['file_id']
+
+    file_id = update.message['document']['file_id']
     doc=bt.get_file(file_id)
     fileName = update.message['document']['file_name']
 
     ##bot saving this file to a directory on your PC
-    pth=r"C:\Users\tonyh\OneDrive\Desktop\pdfs"
-    doc.download(f'{pth}\\{fileName}')
+    pth=r"C:\Users\tonyh\OneDrive\Desktop\programing\python\telegram\help_me_program\pdfs"
 
+    i=find_index(update)
+
+
+
+    ##creating folder name
+    folder_name=user_data[i]["name"]
+    folder_name+='_'
+    folder_name+=str(user_data[i]["chat_id"])
+
+    ##creating folder for user
+    if not os.path.exists(f'{pth}\\{folder_name}'):
+        os.makedirs(f'{pth}\\{folder_name}')
+
+    ##creating folder for date
+    if not os.path.exists(f'{pth}\\{folder_name}\\{update.message.date.date()}'):
+        os.makedirs(f'{pth}\\{folder_name}\\{update.message.date.date()}')
+
+        ##download file
+    file = doc.download(f'{pth}\\{folder_name}\\{update.message.date.date()}\\{fileName}')
 
     ##check if file was downloaded
     user = update.message.from_user
-    if os.path.exists(f'{pth}\\{fileName}'):
+    if os.path.exists(f'{pth}\\{folder_name}\\{update.message.date.date()}\\{fileName}'):
         logger.info("Document of %s: downloaded successfully!", user.first_name)
+
+        ##getting user data into dict
+
+        user_data[i]['work_obj']=file
+
     else:
         logger.info("Document of %s: was not downloaded successfully!", user.first_name)
 
     update.message.reply_text('תודה לך! נוצר איתך קשר בקרוב!')
+
+    ##inserting data into sql and deleting user session
+    sql_obj=sql_object(user_data[i])
+    sql_obj.insert_into_db()
+
+    user_data.pop(i)
+
     return ConversationHandler.END
 
 def skip_work_obj(update: Update, context: CallbackContext) -> int:
@@ -162,6 +250,17 @@ def skip_work_obj(update: Update, context: CallbackContext) -> int:
     user = update.message.from_user
     logger.info("User %s did not send a document.", user.first_name)
     update.message.reply_text('לא נורא שלא שלחת,נוצר איתך קשר בקרוב!')
+
+    i=find_index(update)
+
+    ##inserting data into sql and deleting user session
+
+    user_data[i]['work_obj'] = None
+    sql_obj = sql_object(user_data[i])
+    sql_obj.insert_into_db()
+
+    user_data.pop(i)
+
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
@@ -178,6 +277,9 @@ def cancel(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     """Run the bot."""
     # Create the Updater and pass it your bot's token.
+
+
+
     updater = Updater(API_KEY)
 
     # Get the dispatcher to register handlers
