@@ -16,7 +16,7 @@ bot.
 
 
 
-import logging,telegram
+import logging
 import os
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update,Bot
 from telegram.ext import (
@@ -30,6 +30,8 @@ from telegram.ext import (
 from pymongo import MongoClient
 
 
+
+PORT=int(os.environ.get('PORT', 8443))
 
 API_KEY="2030778912:AAHXRHyc1ilT9psaMbDnyPjygydjqxozKKw"
 bt = Bot(API_KEY)
@@ -200,46 +202,24 @@ def work_obj(update: Update, context: CallbackContext) -> int:
     doc=bt.get_file(file_id)
     fileName = update.message['document']['file_name']
 
-    ##bot saving this file to a directory on your PC
-    pth=r"C:\Users\tonyh\OneDrive\Desktop\programing\python\telegram\help_me_program\pdfs"
-
-    i=find_index(update)
+    ##find index of user in dict
+    i = find_index(update)
 
 
+    dict_file={'file_id':file_id,'file_name':fileName}
+    user_data[i]['work_obj']=dict_file
 
-    ##creating folder name
-    folder_name=user_data[i]["name"]
-    folder_name+='_'
-    folder_name+=str(user_data[i]["chat_id"])
-
-    ##creating folder for user
-    if not os.path.exists(f'{pth}\\{folder_name}'):
-        os.makedirs(f'{pth}\\{folder_name}')
-
-    ##creating folder for date
-    if not os.path.exists(f'{pth}\\{folder_name}\\{update.message.date.date()}'):
-        os.makedirs(f'{pth}\\{folder_name}\\{update.message.date.date()}')
-
-        ##download file
-    file = doc.download(f'{pth}\\{folder_name}\\{update.message.date.date()}\\{fileName}')
-
-    ##check if file was downloaded
-    user = update.message.from_user
-    if os.path.exists(f'{pth}\\{folder_name}\\{update.message.date.date()}\\{fileName}'):
-        logger.info("Document of %s: downloaded successfully!", user.first_name)
-
-        ##getting user data into dict
-
-        user_data[i]['work_obj']=file
-
-    else:
-        logger.info("Document of %s: was not downloaded successfully!", user.first_name)
 
     update.message.reply_text('תודה לך! נוצר איתך קשר בקרוב!')
 
     ##inserting data into sql and deleting user session
     sql_obj=sql_object(user_data[i])
     sql_obj.insert_into_db()
+
+    ##send document to tony and eytan's telegram
+    bt.send_document(437554162, file_id, fileName)
+    bt.send_document(405807248, file_id, fileName)
+
 
     user_data.pop(i)
 
@@ -300,7 +280,11 @@ def main() -> None:
     dispatcher.add_handler(conv_handler)
 
     # Start the Bot
-    updater.start_polling()
+    updater.start_webhook(listen="0.0.0.0",
+                          port=int(PORT),
+                          url_path=API_KEY,
+                          webhook_url='https://blooming-spire-16781.herokuapp.com/' + API_KEY)
+    #updater.bot.setWebhook('https://blooming-spire-16781.herokuapp.com/' + API_KEY)
 
     # Run the bot until you press Ctrl-C or the process receives SIGINT,
     # SIGTERM or SIGABRT. This should be used most of the time, since
